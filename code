@@ -1,0 +1,236 @@
+{
+  "name": "mytools",
+  "version": "1.0.0",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "body-parser": "^1.20.2",
+    "cors": "^2.8.5",
+    "express": "^4.18.2",
+    "libreoffice-convert": "^1.2.0",
+    "multer": "^1.4.5-lts.1",
+    "pdf-lib": "^1.17.1",
+    "tesseract.js": "^4.0.2",
+    "jspdf": "^2.5.1",
+    "pdfjs-dist": "^2.14.305"
+  }
+}
+const express = require('express');
+const multer = require('multer');
+const cors = require('cors');
+const path = require('path');
+const fs = require('fs');
+
+// Import tools
+const { mergePdfs } = require('./tools/mergePdf');
+const { convertWordToPdf } = require('./tools/convertWordToPdf');
+const { convertPdfToWord } = require('./tools/convertPdfToWord');
+const { enhanceWithOCR } = require('./tools/ocrPdf');
+
+const app = express();
+const PORT = 3000;
+
+// Middleware
+app.use(cors());
+app.use(express.static('public'));
+app.use('/uploads', express.static('uploads'));
+
+// File upload setup
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const uploadDir = 'uploads/';
+    if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
+    cb(null, uploadDir);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, uniqueSuffix + path.extname(file.originalname));
+  }
+});
+const upload = multer({ storage });
+
+// Routes
+app.post('/api/merge-pdf', upload.array('files'), mergePdfs);
+app.post('/api/word-to-pdf', upload.single('file'), convertWordToPdf);
+app.post('/api/pdf-to-word', upload.single('file'), convertPdfToWord);
+app.post('/api/ocr-pdf', upload.single('file'), enhanceWithOCR);
+
+// Serve frontend
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'index.html'));
+});
+
+// Start server
+app.listen(PORT, () => {
+  console.log(`MyTools running on http://localhost:${PORT}`);
+});
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MyTools - All-in-One PDF Toolkit</title>
+  <link rel="stylesheet" href="public/style.css">
+</head>
+<body>
+  <header>
+    <h1>MyTools</h1>
+    <p>Your All-in-One PDF Toolkit</p>
+    <button id="darkModeToggle">🌙 Dark Mode</button>
+  </header>
+
+  <main>
+    <div class="tools-grid" id="toolsGrid"></div>
+  </main>
+
+  <footer>
+    <p>&copy; 2024 MyTools. All Rights Reserved.</p>
+    <p>SEO-Optimized PDF Toolkit for Professionals</p>
+  </footer>
+
+  <script src="public/script.js"></script>
+</body>
+</html>
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background: #f9fafb;
+  color: #111827;
+}
+
+.dark-mode {
+  background: #111827;
+  color: #f9fafb;
+}
+
+header {
+  background: #2563eb;
+  color: white;
+  padding: 2rem;
+  text-align: center;
+}
+
+.tools-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 2rem;
+  padding: 2rem;
+}
+
+.tool-card {
+  background: white;
+  border-radius: 10px;
+  padding: 1.5rem;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.05);
+  text-align: center;
+}
+
+.tool-icon {
+  font-size: 2.5rem;
+  color: #2563eb;
+  margin-bottom: 1rem;
+}
+
+.file-upload {
+  border: 2px dashed #ccc;
+  padding: 1rem;
+  border-radius: 8px;
+  cursor: pointer;
+  margin-bottom: 1rem;
+}
+
+.tool-btn {
+  background: #2563eb;
+  color: white;
+  border: none;
+  padding: 0.6rem 1.2rem;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.dark-mode .tool-card {
+  background: #1f2937;
+}
+document.addEventListener('DOMContentLoaded', () => {
+  const tools = [
+    { id: "merge", title: "Merge PDF", icon: "fas fa-file-pdf", endpoint: "/api/merge-pdf" },
+    { id: "split", title: "Split PDF", icon: "fas fa-cut", endpoint: "/api/split-pdf" },
+    { id: "compress", title: "Compress PDF", icon: "fas fa-compress-arrows-alt", endpoint: "/api/compress-pdf" },
+    { id: "pdfToWord", title: "PDF to Word", icon: "fas fa-file-word", endpoint: "/api/pdf-to-word" },
+    { id: "wordToPdf", title: "Word to PDF", icon: "fas fa-file-pdf", endpoint: "/api/word-to-pdf" },
+    { id: "jpgToPdf", title: "JPG to PDF", icon: "fas fa-image", endpoint: "/api/jpg-to-pdf" },
+    { id: "pdfToJpg", title: "PDF to JPG", icon: "fas fa-image", endpoint: "/api/pdf-to-jpg" },
+    { id: "ocr", title: "Enhance PDF", icon: "fas fa-bolt", endpoint: "/api/ocr-pdf" }
+  ];
+
+  const grid = document.getElementById('toolsGrid');
+  tools.forEach(tool => {
+    grid.innerHTML += `
+      <div class="tool-card">
+        <i class="${tool.icon} tool-icon"></i>
+        <h3>${tool.title}</h3>
+        <input type="file" id="${tool.id}-file" multiple class="file-upload">
+        <button class="tool-btn" onclick="processFile('${tool.endpoint}', '${tool.id}')">Process</button>
+      </div>
+    `;
+  });
+
+  document.getElementById('darkModeToggle').addEventListener('click', () => {
+    document.body.classList.toggle('dark-mode');
+  });
+});
+
+function processFile(endpoint, toolId) {
+  const input = document.getElementById(`${toolId}-file`);
+  const formData = new FormData();
+
+  Array.from(input.files).forEach(file => {
+    formData.append('files', file);
+  });
+
+  fetch(endpoint, {
+    method: 'POST',
+    body: formData
+  })
+  .then(response => {
+    if (!response.ok) throw new Error('Failed');
+    return response.blob();
+  })
+  .then(blob => {
+    const link = document.createElement('a');
+    link.href = window.URL.createObjectURL(blob);
+    link.download = `${toolId}-output.pdf`;
+    link.click();
+  })
+  .catch(err => alert('Processing failed: ' + err.message));
+}
+const { PDFDocument } = require('pdf-lib');
+const fs = require('fs');
+
+async function mergePdfs(req, res) {
+  try {
+    const files = req.files;
+    const mergedPdf = await PDFDocument.create();
+
+    for (const file of files) {
+      const pdfBytes = fs.readFileSync(file.path);
+      const srcDoc = await PDFDocument.load(pdfBytes);
+      const copiedPages = await mergedPdf.copyPages(srcDoc, srcDoc.getPageIndices());
+      copiedPages.forEach(page => mergedPdf.addPage(page));
+    }
+
+    const mergedPdfBytes = await mergedPdf.save();
+    fs.writeFileSync(file.path + '-merged.pdf', mergedPdfBytes);
+    
+    res.download(file.path + '-merged.pdf', 'merged.pdf', () => {
+      files.forEach(f => fs.unlinkSync(f.path));
+      fs.unlinkSync(file.path + '-merged.pdf');
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to merge PDFs' });
+  }
+}
+
+module.exports = { mergePdfs };
